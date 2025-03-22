@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Welcome</title>
+	<title>Hora Atual</title>
 	<link rel="stylesheet" href="styleswb.css">
 </head>
 <body>
@@ -19,8 +19,17 @@
 	</nav>
 </header>
 <main>
-	<h1>Bem-vindo à Página Inicial</h1>
-	<p>Esta é a página principal do site.</p>
+	<h1>Hora Atual</h1>
+	<p>Página que exibe a hora atual.</p>
+	<p id="time"></p>
+	<script>
+		function updateTime() {
+			const now = new Date();
+			document.getElementById('time').textContent = now.toLocaleTimeString();
+		}
+		setInterval(updateTime, 1000);
+		updateTime();
+	</script>
 </main>
 </body>
 </html>

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <set>
+#include <unordered_set>
 #include <map>
 #include <vector>
 #include <fcntl.h>
@@ -19,14 +20,16 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <ctime>
+#include <unistd.h>
 
-#define TIMEOUT 60000
+
+#define TIMEOUT 60000000
 #define BUFFER_SIZE 2048
 #define MAX_CONNECTIONS 100
 #define DEFAULT_CONFIG "Configuration/default.conf"
 #define MAX_HEADER_SIZE 8192
 #define MAX_BODY_SIZE 10485760
-#define CONNECTION_TIMEOUT 20
+#define CONNECTION_TIMEOUT 3000000
 
 #define RESET   "\033[0m"
 #define BLACK   "\033[30m"
@@ -52,6 +55,13 @@ std::string ft_toString(const T& value)
 	std::ostringstream oss;
 	oss << value;
 	return oss.str();
+}
+
+inline bool ft_endsWith(const std::string& str, const std::string& suffix)
+{
+	if (str.length() < suffix.length())
+		return false;
+	return (str.substr(str.length() - suffix.length()) == suffix);
 }
 
 #endif

@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Welcome</title>
+	<title>Upload</title>
 	<link rel="stylesheet" href="styleswb.css">
 </head>
 <body>
@@ -19,8 +19,12 @@
 	</nav>
 </header>
 <main>
-	<h1>Bem-vindo à Página Inicial</h1>
-	<p>Esta é a página principal do site.</p>
+	<h1>Upload de Arquivo</h1>
+	<p>Página para upload de arquivos.</p>
+	<form action="/upload/upload.py" method="POST" enctype="multipart/form-data">
+		<input type="file" name="file" required></br>
+		<input type="submit" value="Upload">
+	</form>
 </main>
 </body>
 </html>

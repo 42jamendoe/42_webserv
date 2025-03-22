@@ -11,7 +11,7 @@ class Server
 		std::string _host;
 		std::string _root;
 		std::string _index;
-		std::string _server_name;
+		std::map<int, std::string> _server_name;
 		std::string _error_page;
 		size_t 	_client_max_body_size;
 		std::vector<Location> _location;

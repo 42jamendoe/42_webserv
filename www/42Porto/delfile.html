@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Deletar Arquivo</title>
+	<link rel="stylesheet" href="styleswb.css">
+</head>
+<body>
+<header>
+	<nav>
+		<ul>
+			<li><a href="index.html">Home</a></li>
+			<li><a href="upfile.html">Upload</a></li>
+			<li><a href="delfile.html">Delete</a></li>
+			<li><a href="redir.html">Redirect</a></li>
+			<li><a href="time.html">Time</a></li>
+		</ul>
+	</nav>
+</header>
+<main>
+	<form id="deleteForm">
+		<label for="filename">Nome do arquivo:</label>
+		<input type="text" id="filename" name="filename" required>
+		<button type="button" id="deleteButton" onclick="deleteFile()">Apagar Arquivo</button>
+	</form>
+
+	<!-- Aqui será exibida a resposta -->
+	<div id="responseMessage"></div>
+
+	<script>
+		function deleteFile() {
+			const filename = document.getElementById("filename").value.trim();
+			const responseDiv = document.getElementById("responseMessage");
+			const deleteButton = document.getElementById("deleteButton");
+
+			if (filename === "") {
+				responseDiv.textContent = "Por favor, insira um nome de arquivo.";
+				responseDiv.style.color = "red";
+				return;
+			}
+
+			deleteButton.disabled = true; // Desativa o botão durante a requisição
+
+			fetch(`/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' })
+					.then(response => {
+						if (!response.ok) {
+							throw new Error(`Erro ${response.status}: ${response.statusText}`);
+						}
+						return response.text();
+					})
+					.then(data => {
+						responseDiv.textContent = data;
+						responseDiv.style.color = "green";
+					})
+					.catch(error => {
+						responseDiv.textContent = "Erro ao apagar o arquivo: " + error.message;
+						responseDiv.style.color = "red";
+					})
+					.finally(() => {
+						deleteButton.disabled = false; // Reativa o botão após a requisição
+
+						// Remove a mensagem após 5 segundos
+						setTimeout(() => { responseDiv.textContent = ""; }, 5000);
+					});
+		}
+	</script>
+
+</main>
+</body>
+</html>

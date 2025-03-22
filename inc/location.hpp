@@ -16,9 +16,8 @@ class Location
         std::string _cgi_path;
         std::string _cgi_ext;
         std::string _upload;
-        bool _uploadAllowed;
-        bool _deleteAllowed;
         std::string _uploadPath;
+
 
     public:
 
@@ -48,12 +47,11 @@ class Location
         const std::string& ft_getCgiPath() const;
         const std::string& ft_getCgiExt() const;
         const std::string& ft_getUpload() const;
-
-        void ft_setUploadAllowed(bool allowed);
-        bool ft_isUploadAllowed() const;
         void ft_setUploadPath(const std::string &path);
         const std::string& ft_getUploadPath() const;
-        bool ft_getDeleteAllowed() const;
+        bool ft_isMethodAllowed(const std::string& method) const;
+        bool ft_isRedirect() const;
+        std::string ft_getRedirectUrl() const;
 };
 
 #endif

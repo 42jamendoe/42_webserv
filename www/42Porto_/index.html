@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Página Estática</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav>
+    <a href="#" onclick="showSection('inicio')">Início</a>
+    <a href="#" onclick="showSection('carregar')">Carregar Ficheiro</a>
+    <a href="#" onclick="showSection('apagar')">Apagar Ficheiro</a>
+    <a href="#" onclick="showSection('tempo')">Mostrar Tempo e Localização</a>
+</nav>
+
+<div class="content">
+    <div id="inicio">
+        <h2>Bem-vindo!</h2>
+        <p>Selecione uma opção no menu acima.</p>
+    </div>
+
+    <div id="carregar" class="hidden">
+        <h2>Carregar Ficheiro</h2>
+        <input type="file" class="file-input">
+        <button class="button">Enviar</button>
+    </div>
+
+    <div id="apagar" class="hidden">
+        <h2>Apagar Ficheiro</h2>
+        <button class="button">Apagar</button>
+    </div>
+
+    <div id="tempo" class="hidden">
+        <h2>Tempo e Localização</h2>
+        <button class="button" onclick="mostrarTempo()">Mostrar</button>
+        <p id="tempoInfo"></p>
+    </div>
+</div>
+</body>
+</html>
+

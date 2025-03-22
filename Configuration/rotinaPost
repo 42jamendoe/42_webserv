@@ -1,0 +1,15 @@
+vamos abordar o caso em que é um pedido POST. no handleData, após a recepção do pedido completo,
+entra no processResponse valida o pedido e encaminha para o handle correcto. No caso do POST
+encaminha para o handlePOST. no handle post vou ter de começar o mecanismo de configuração dos pipes
+ e fazer fork. Como é post vou adicionar o fd de escrita do pipeout ao map cgiProcesses este fd
+ tem de ser não bloqueante e POLLOUT e adiciono também o fd de leitura do pipeIN fazendo também
+ não bloqueante e POLLIN. Neste momento posso fechar o fd de leitura do pipeout e o fd de escrita
+ do pipeIn. No filho fecho o fd de escrita do pipeout e o ficheiro de leitura do pipein. No filho a
+ leitura e a escrita deve ser bloqueante porque vou fazer dup2 do fd de leitura do pipeOUT ao STDIN
+ e dup2 do fd de escrita do pipein ao STDOUT. e adiciono o id do file descritor da ligação que fez o
+ request post a _clientFd. por fim faço o execve. estas variáveis estao todas na classe Cgi. Apara já
+ ainda nao estou a enviar nada para o script mas já posso sair do processResponse, voltando ao
+ handleClientData não fechando o cliente do resquest do POST e finalmente à connection onde está o loop.
+
+
+ vamos abordar o caso em que é um pedido POST. no handleData, após a recepção do pedido completo, entra no processResponse valida o pedido e encaminha para o handle correcto. aqui acresnto o POLLOUT ao fd responsável pelo pedido (devo retirar o POLLIN?) No caso do POST encaminha para o handlePOST. no handle post vou ter de começar o mecanismo de configuração dos pipes e fazer fork. Como é post vou adicionar o fd de escrita do pipeout ao map cgiProcesses este fd tem de ser não bloqueante e POLLOUT e adiciono também o fd de leitura do pipeIN fazendo também não bloqueante e POLLIN. Neste momento posso fechar o fd de leitura do pipeout e o fd de escrita do pipeIn. No filho fecho o fd de escrita do pipeout e o ficheiro de leitura do pipein. No filho a leitura e a escrita deve ser bloqueante porque vou fazer dup2 do fd de leitura do pipeOUT ao STDIN e dup2 do fd de escrita do pipein ao STDOUT. e adiciono o id do file descritor da ligação que fez o request post a _clientFd. por fim faço o execve. estas variáveis estao todas na classe Cgi. Apara já ainda nao estou a enviar nada para o script mas já posso sair do processResponse, voltando ao handleClientData não fechando o cliente do resquest do POST e finalmente à connection onde está o loop.  Agora que estamos no loop principal ja vou descrever o envio do body para o script e a recepção da resposta do script que posteriormente envio ao fd da requisição original. Quer comentar o meu processo?

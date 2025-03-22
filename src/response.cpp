@@ -1,8 +1,11 @@
 #include "response.hpp"
 
+Response::Response(): _clientFd(-1)
+{
 
+}
 
-Response::Response(): _statusCode(200), _bytesSent(0), _readyToSend(false)
+Response::Response(int fd): _clientFd(fd), _statusCode(200), _bytesSent(0)
 {
 
 }
@@ -10,11 +13,6 @@ Response::Response(): _statusCode(200), _bytesSent(0), _readyToSend(false)
 Response::~Response()
 {
 
-}
-
-void Response::ft_setResServer(const Server& server)
-{
-    _resServer = server;
 }
 
 void Response::ft_setResponse(int code, const std::string &message, const std::string &contentType)
@@ -29,9 +27,7 @@ void Response::ft_setResponse(int code, const std::string &message, const std::s
     ft_setHeader("Content-Type", contentType);
     ft_setHeader("Content-Length", ft_toString(_body.size()));
     ft_generateRawResponse();
-    //_readyToSend = true;
 }
-
 
 void Response::ft_setStatus(const int code, const std::string &message)
 {
@@ -46,7 +42,21 @@ void Response::ft_setHeader(const std::string &key, const std::string &value)
     _headers[key] = value;
 }
 
-void Response::ft_processResponse(Request& request, const std::vector<Server>& servers)
+void Response::ft_generateRawResponse()
+{
+    if (_headers.find("Content-Length") == _headers.end())
+        _headers["Content-Length"] = ft_toString(_body.size());
+    std::stringstream responseStream;
+    responseStream << _statusLine << "\r\n";
+    for (std::map<std::string, std::string>::iterator it = _headers.begin(); it != _headers.end(); ++it)
+        responseStream << it->first << ": " << it->second << "\r\n";
+    responseStream << "\r\n";
+    responseStream << _body;
+    _rawResponse = responseStream.str();
+    _bytesSent = 0;
+}
+
+void Response::ft_processResponse(Request &request, Cgi &tmpCgiProcess, const std::vector<Server> &servers, std::unordered_set<pid_t>& pidSet)
 {
     if (request.ft_getHttpVersion() != "HTTP/1.1")
     {
@@ -71,16 +81,37 @@ void Response::ft_processResponse(Request& request, const std::vector<Server>& s
         if (*endPtr == '\0' && portValue > 0 && portValue <= 65535)
             requestedPort = static_cast<int>(portValue);
     }
+    else
+        tmp = host;
     const std::string& hostRef = tmp;
     const Server& selectedServer = ft_findServerForRequest(servers, hostRef, requestedPort);
     if (request.ft_getMethod() == "GET")
         ft_handleGET(request, selectedServer);
     else if (request.ft_getMethod() == "POST")
-        ft_handlePOST(request, selectedServer);
+        ft_handlePOST(request, tmpCgiProcess, selectedServer, pidSet);
     else if (request.ft_getMethod() == "DELETE")
         ft_handleDELETE(request, selectedServer);
     else
         ft_setResponse(405, "Method Not Allowed", "text/html");
+}
+
+const Server& Response::ft_findServerForRequest(const std::vector<Server>& servers, const std::string& requestedHost, const int requestedPort)
+{
+    const Server* defaultServer = NULL;
+
+    for (size_t i = 0; i < servers.size(); ++i)
+    {
+        if (servers[i].ft_getServerName() == requestedHost)
+            return servers[i];
+        if (servers[i].ft_getIsDefault())
+        {
+            if (!defaultServer || servers[i].ft_getPort() == requestedPort)
+                defaultServer = &servers[i];
+        }
+    }
+    if (defaultServer)
+        return *defaultServer;
+    return servers[0];
 }
 
 void Response::ft_handleGET(Request& request, const Server& server)
@@ -92,7 +123,6 @@ void Response::ft_handleGET(Request& request, const Server& server)
         root.erase(root.size() - 1, 1);
     if (!path.empty() && path[0] != '/')
         path = "/" + path;
-
     const Location* location = server.ft_findLocation(path);
     if (location)
         root = location->ft_getRoot();
@@ -101,123 +131,188 @@ void Response::ft_handleGET(Request& request, const Server& server)
         ft_setResponse(500, "Internal Server Error: No root directory configured", "text/html");
         return;
     }
+    if (!location->ft_isMethodAllowed("GET"))
+    {
+        ft_setResponse(405, "Method Not Allowed", "text/html");
+        return;
+    }
+    if (location->ft_isRedirect())
+    {
+        ft_setResponse(301, "Moved Permanently", "text/html");
+        return;
+    }
+    bool isDirectory = (path[path.size() - 1] == '/');
+    if (isDirectory && !server.ft_getIndex().empty())
+        path += server.ft_getIndex();
     std::string fullPath = root + path;
-    char resolvedPath[PATH_MAX] = "\0";
-    if (realpath(fullPath.c_str(), resolvedPath) == NULL)
+    struct stat fileStat;
+    if (stat(fullPath.c_str(), &fileStat) == -1)
     {
-        ft_setResponse(403, "Forbidden: Path traversal detected", "text/html");
+        ft_setResponse(404, "Not Found", "text/html");
         return;
     }
-    fullPath = resolvedPath;
-    struct stat pathStat;
-    if (stat(fullPath.c_str(), &pathStat) != 0)
+    if (S_ISDIR(fileStat.st_mode))
     {
-        ft_setResponse(404, "Not Found: Resource not found", "text/html");
-        return;
-    }
-    bool autoindex = location && location->ft_getAutoIndex();
-    if (S_ISDIR(pathStat.st_mode))
-    {
-        if (fullPath[fullPath.size() - 1] != '/')
-            fullPath += "/";
-        std::string indexPath = fullPath + "index.html";
-        if (stat(indexPath.c_str(), &pathStat) == 0 && !S_ISDIR(pathStat.st_mode))
+        if (location->ft_getAutoIndex())
         {
-            fullPath = indexPath;
-        }
-        else if (autoindex)
-        {
-            std::string autoindexHtml = ft_generateAutoindex(fullPath, path);
-            if (autoindexHtml.empty())
+            std::vector<std::string> files = ft_getDirectoryListing(fullPath);
+            if (!files.empty())
             {
-                ft_setResponse(500, "Internal Server Error: Failed to generate directory listing", "text/html");
+                std::stringstream listContent;
+                for (size_t i = 0; i < files.size(); ++i)
+                    listContent << "<a href='" << path + files[i] << "'>" << files[i] << "</a><br>";
+                std::string fileContent = listContent.str();
+                ft_setResponse(200, "OK", "text/html");
+                ft_setHeader("Content-Length", ft_toString(fileContent.size()));
+                ft_setBody(fileContent);
+                ft_generateRawResponse();
                 return;
             }
-            _body = autoindexHtml;
-            ft_setStatus(200, "OK");
-            ft_setHeader("Content-Length", ft_toString(_body.size()));
-            ft_setHeader("Content-Type", "text/html");
-            _readyToSend = true;
+        }
+        ft_setResponse(404, "Not Found", "text/html");
+        return;
+    }
+    if (S_ISREG(fileStat.st_mode))
+    {
+        int file_fd = open(fullPath.c_str(), O_RDONLY | O_NONBLOCK);
+        if (file_fd < 0)
+        {
+            ft_setResponse(500, "Internal Server Error: File open failed", "text/html");
             return;
+        }
+        std::string mimeType = ft_getMimeType(fullPath);
+        if (mimeType.empty())
+            mimeType = "application/octet-stream";
+        char buffer[8192];
+        std::string fileContent;
+        ssize_t bytesRead;
+        while ((bytesRead = read(file_fd, buffer, sizeof(buffer))) > 0)
+            fileContent.append(buffer, bytesRead);
+        close(file_fd);
+        if (bytesRead < 0)
+        {
+            ft_setResponse(500, "Internal Server Error: File read failed", "text/html");
+            return;
+        }
+        ft_setResponse(200, "OK", mimeType);
+        ft_setHeader("Content-Length", ft_toString(fileContent.size()));
+        ft_setBody(fileContent);
+        ft_generateRawResponse();
+        return;
+    }
+    ft_setResponse(404, "Not Found", "text/html");
+}
+
+std::vector<std::string> Response::ft_getDirectoryListing(const std::string& directoryPath)
+{
+    std::vector<std::string> files;
+    DIR* dir = opendir(directoryPath.c_str());
+    if (dir)
+    {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL)
+        {
+            if (entry->d_name[0] != '.')
+                files.push_back(entry->d_name);
+        }
+        closedir(dir);
+    }
+    return files;
+}
+
+void Response::ft_setBody(const std::string& bodyContent)
+{
+    _body = bodyContent;
+}
+
+std::string Response::ft_getMimeType(const std::string& path)
+{
+    static std::map<std::string, std::string> mimeTypes;
+
+    mimeTypes[".html"] = "text/html";
+    mimeTypes[".htm"] = "text/html";
+    mimeTypes[".css"] = "text/css";
+    mimeTypes[".js"] = "application/javascript";
+    mimeTypes[".json"] = "application/json";
+    mimeTypes[".png"] = "image/png";
+    mimeTypes[".jpg"] = "image/jpeg";
+    mimeTypes[".jpeg"] = "image/jpeg";
+    mimeTypes[".gif"] = "image/gif";
+    mimeTypes[".txt"] = "text/plain";
+    mimeTypes[".pdf"] = "application/pdf";
+
+    size_t dotPos = path.find_last_of('.');
+    if (dotPos == std::string::npos)
+        return "application/octet-stream";
+    std::string ext = path.substr(dotPos);
+    for (size_t i = 0; i < ext.size(); ++i)
+        ext[i] = std::tolower(ext[i]);
+    std::map<std::string, std::string>::const_iterator it = mimeTypes.find(ext);
+    if (it != mimeTypes.end())
+        return it->second;
+    return "application/octet-stream";
+}
+
+void Response::ft_handlePOST(Request& request, Cgi &tmpCgiProcess, const Server& server, std::unordered_set<pid_t>& pidSet)
+{
+    try
+    {
+        const Location* location = server.ft_findLocation(request.ft_getPath());
+        if (!location)
+        {
+            ft_setResponse(404, "Not Found","text/html");
+            return;
+        }
+        Location tempLocation = *location;
+        if (tempLocation.ft_getRoot().empty())
+            tempLocation.ft_setRoot(server.ft_getRoot());
+        size_t lastSlashPos = request.ft_getPath().find_last_of('/');
+        if (lastSlashPos == std::string::npos) {
+            tmpCgiProcess.ft_setScriptDir("./");
+            tmpCgiProcess.ft_setScriptName(request.ft_getPath());
         }
         else
         {
-            ft_setResponse(403, "Forbidden: Directory listing is not allowed", "text/html");
-            return;
+            tmpCgiProcess.ft_setScriptDir(request.ft_getPath().substr(0, lastSlashPos));
+            tmpCgiProcess.ft_setScriptName(request.ft_getPath().substr(lastSlashPos + 1));
         }
+        tmpCgiProcess.ft_validateCgiSetup(tempLocation);
+        tmpCgiProcess.ft_setupCgi(tempLocation, request);
+        tmpCgiProcess.ft_executeCgi(tempLocation, pidSet);
+        tmpCgiProcess.ft_setCgiServer(server);
     }
-    std::ifstream file(fullPath.c_str(), std::ios::in | std::ios::binary);
-    if (!file.is_open())
+    catch (const std::exception &e)
     {
-        ft_setResponse(403, "Forbidden: Cannot open file", "text/html");
-        return;
+        std::cerr << "Error at CGI: " << e.what() << std::endl;
+        ft_setResponse(500, "Internal Server Error", "text/html");
     }
-    std::ostringstream buffer;
-    buffer << file.rdbuf();
-    _body = buffer.str();
-    file.close();
-    ft_setStatus(200, "OK");
-    ft_setHeader("Content-Length", ft_toString(_body.size()));
-    ft_setHeader("Content-Type", ft_getMimeType(fullPath));
-    ft_generateRawResponse();
-    _readyToSend = true;
 }
-
-void Response::ft_handlePOST(Request& request, const Server& server)
-{
-    size_t maxBodySize = server.ft_getClientMaxBodySize();
-
-    if (request.ft_getBody().size() > maxBodySize)
-    {
-        ft_setResponse(413, "Payload Too Large", "text/html");
-        return;
-    }
-    const Location* location = server.ft_findLocation(request.ft_getPath());
-    if (!location || location->ft_getUpload().empty())
-    {
-        ft_setResponse(403, "Forbidden: No upload directory configured", "text/html");
-        return;
-    }
-    std::string uploadPath = location->ft_getUpload();
-    struct stat info;
-    if (stat(uploadPath.c_str(), &info) != 0 || !S_ISDIR(info.st_mode) || access(uploadPath.c_str(), W_OK) != 0)
-    {
-        ft_setResponse(403, "Forbidden: Upload directory is not writable", "text/html");
-        return;
-    }
-    std::string filePath = uploadPath + "/upload_" + ft_toString(request.ft_getClientFd()) + "_" + ft_toString(time(NULL)) + ".tmp";
-    std::ofstream outFile(filePath.c_str(), std::ios::binary);
-    if (!outFile.is_open())
-    {
-        ft_setResponse(500, "Internal Server Error: Cannot create file", "text/html");
-        return;
-    }
-    outFile.write(request.ft_getBody().c_str(), request.ft_getBody().size());
-    if (!outFile.good())
-    {
-        ft_setResponse(500, "Internal Server Error: Failed to write file", "text/html");
-        return;
-    }
-    outFile.close();
-    ft_setResponse(201, "Created: File uploaded successfully at " + filePath, "text/html");
-}
-
 
 void Response::ft_handleDELETE(Request& request, const Server& server)
 {
     const Location* location = server.ft_findLocation(request.ft_getPath());
-    if (!location || !location->ft_getDeleteAllowed())
+    if (!location || !location->ft_isMethodAllowed(request.ft_getMethod()))
     {
         ft_setResponse(403, "Forbidden: DELETE is not allowed for this location", "text/html");
         return;
     }
     std::string root = location->ft_getRoot();
+    if (root.empty())
+        root = server.ft_getRoot();
+    if (root.empty())
+    {
+        ft_setResponse(500, "Internal Server Error: No root directory configured", "text/html");
+        return;
+    }
     std::string path = request.ft_getPath();
     if (!root.empty() && root[root.size() - 1] == '/')
         root.erase(root.size() - 1, 1);
     if (!path.empty() && path[0] != '/')
         path = "/" + path;
-    std::string fullPath = root + path;
+    std::string relativePath = path.substr(location->ft_getPath().size());
+    if (!relativePath.empty() && relativePath[0] == '/')
+        relativePath.erase(0, 1);
+    std::string fullPath = root + '/' + relativePath;
     if (fullPath.find("..") != std::string::npos)
     {
         ft_setResponse(403, "Forbidden: Path traversal detected", "text/html");
@@ -266,66 +361,13 @@ void Response::ft_handleDELETE(Request& request, const Server& server)
             ft_setResponse(500, "Internal Server Error: Failed to delete file", "text/html");
             return;
         }
+        else
+        {
+            ft_setResponse(200, "The file was deleted!", "text/html");
+            return;
+        }
     }
     ft_setResponse(204, "No Content", "text/html");
-}
-
-
-std::string Response::ft_generateAutoindex(const std::string& directoryPath, const std::string& requestPath)
-{
-    DIR* dir = opendir(directoryPath.c_str());
-    if (!dir)
-    {
-        std::cerr << "Error: Cannot open directory " << directoryPath << std::endl;
-        return "<html><head><title>500 Internal Server Error</title></head><body><h1>Internal Server Error</h1><p>Failed to generate directory listing.</p></body></html>";
-    }
-    std::stringstream html;
-    html << "<html><head><title>Index of " << requestPath << "</title></head>"
-         << "<body><h1>Index of " << requestPath << "</h1><ul>";
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL)
-    {
-        std::string name = entry->d_name;
-        if (name == ".")
-            continue;
-        std::string href = requestPath;
-        if (href[href.size() - 1] != '/')
-            href += '/';
-        href += name;
-        html << "<li><a href=\"" << href << "\">" << name << "</a></li>";
-    }
-    closedir(dir);
-    html << "</ul></body></html>";
-    return html.str();
-}
-
-
-std::string Response::ft_getMimeType(const std::string& path)
-{
-    static std::map<std::string, std::string> mimeTypes;
-
-    mimeTypes[".html"] = "text/html";
-    mimeTypes[".htm"] = "text/html";
-    mimeTypes[".css"] = "text/css";
-    mimeTypes[".js"] = "application/javascript";
-    mimeTypes[".json"] = "application/json";
-    mimeTypes[".png"] = "image/png";
-    mimeTypes[".jpg"] = "image/jpeg";
-    mimeTypes[".jpeg"] = "image/jpeg";
-    mimeTypes[".gif"] = "image/gif";
-    mimeTypes[".txt"] = "text/plain";
-    mimeTypes[".pdf"] = "application/pdf";
-
-    size_t dotPos = path.find_last_of('.');
-    if (dotPos == std::string::npos)
-        return "application/octet-stream";
-    std::string ext = path.substr(dotPos);
-    for (size_t i = 0; i < ext.size(); ++i)
-        ext[i] = std::tolower(ext[i]);
-    std::map<std::string, std::string>::const_iterator it = mimeTypes.find(ext);
-    if (it != mimeTypes.end())
-        return it->second;
-    return "application/octet-stream";
 }
 
 std::string Response::ft_getResponseChunk()
@@ -340,100 +382,17 @@ std::string Response::ft_getResponseChunk()
     return _rawResponse.substr(_bytesSent, chunkSize);
 }
 
-void Response::ft_generateErrorResponse(int code)
+void Response::ft_addBytesSent(size_t bytes)
 {
-    std::string message;
-
-    switch (code)
-    {
-    case 400:
-        message = "Bad Request";
-        break;
-    case 403:
-        message = "Forbidden";
-        break;
-    case 404:
-        message = "Not Found";
-        break;
-    case 405:
-        message = "Method Not Allowed";
-        break;
-    case 500:
-        message = "Internal Server Error";
-        break;
-    case 505:
-        message = "HTTP Version Not Supported";
-        break;
-    default:
-        message = "Unknown Error";
-        break;
-    }
-
-    ft_setResponse(code, message);
+    _bytesSent += bytes;
 }
 
-const Server& Response::ft_findServerForRequest(const std::vector<Server>& servers, const std::string& requestedHost, const int requestedPort)
+size_t Response::ft_getBytesSent() const
 {
-    const Server* defaultServer = NULL;
-
-    for (size_t i = 0; i < servers.size(); ++i)
-    {
-        if (servers[i].ft_getServerName() == requestedHost)
-            return servers[i];
-
-        if (servers[i].ft_getIsDefault())
-        {
-            if (!defaultServer || servers[i].ft_getPort() == requestedPort)
-                defaultServer = &servers[i];
-        }
-    }
-
-    if (defaultServer)
-        return *defaultServer;
-
-    return servers[0];
+    return _bytesSent;
 }
 
-const Location* Response::ft_findMatchingLocation(const Request& request, const Server& server)
+std::string Response::ft_getRawResponse() const
 {
-    const std::vector<Location>& locations = server.ft_getLocations();
-    const Location* matchedLocation = NULL;
-
-    for (size_t i = 0; i < locations.size(); i++)
-    {
-        if (request.ft_getPath().find(locations[i].ft_getPath()) == 0)
-        {
-            if (!matchedLocation || locations[i].ft_getPath().size() > matchedLocation->ft_getPath().size())
-            {
-                matchedLocation = &locations[i];
-            }
-        }
-    }
-
-    return matchedLocation;
-}
-
-void Response::ft_generateRawResponse()
-{
-    if (_headers.find("Content-Length") == _headers.end())
-        _headers["Content-Length"] = ft_toString(_body.size());
-    _headers["Connection"] = "close";
-    std::stringstream responseStream;
-    responseStream << _statusLine << "\r\n";
-    for (std::map<std::string, std::string>::iterator it = _headers.begin(); it != _headers.end(); ++it)
-        responseStream << it->first << ": " << it->second << "\r\n";
-    responseStream << "\r\n";
-    responseStream << _body;
-    _rawResponse = responseStream.str();
-    _bytesSent = 0;
-}
-
-void Response::ft_setRedirect(const std::string& newLocation)
-{
-    _statusCode = 301;
-    _statusLine = "Moved Permanently";
-    _headers["Location"] = newLocation;
-    _headers["Content-Length"] = "0";
-    _body.clear();
-    //_readyToSend = true;//esta porcaria nao deve estar bem
+    return _rawResponse;
 }

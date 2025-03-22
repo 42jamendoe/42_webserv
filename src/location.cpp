@@ -1,6 +1,6 @@
 #include "../inc/location.hpp"
 
-Location::Location() : _auto_index(false), _uploadAllowed(false)
+Location::Location() : _auto_index(false)
 {
 
 }
@@ -61,11 +61,6 @@ void Location::ft_setUpload(const std::string& upload)
     this->_upload = upload;
 }
 
-void Location::ft_setUploadAllowed(bool allowed)
-{
-    _uploadAllowed = allowed;
-}
-
 void Location::ft_setUploadPath(const std::string &path)
 {
     _upload = path;
@@ -121,18 +116,25 @@ const std::string& Location::ft_getUpload() const
     return(_upload);
 }
 
-
-bool Location::ft_isUploadAllowed() const
-{
- return _uploadAllowed;
-}
-
 const std::string& Location::ft_getUploadPath() const
 {
  return _upload;
 }
 
-bool Location::ft_getDeleteAllowed() const
+bool Location::ft_isMethodAllowed(const std::string& method) const
 {
-    return _deleteAllowed;
+    if (_limit_methods.empty()) {
+        return true;
+    }
+    return _limit_methods.find(method) != _limit_methods.end();
 }
+
+bool Location::ft_isRedirect() const
+{
+    return !_redirection.empty();
+}
+
+std::string Location::ft_getRedirectUrl() const {
+    return _redirection;  // Retorna a URL de redirecionamento
+}
+

@@ -1,8 +1,13 @@
 #include "../inc/request.hpp"
 
-
 Request::Request()
 {
+    ft_setLastActivity();
+}
+
+Request::Request(int fd) : _clientFd(fd)
+{
+    (void) _clientFd;
     ft_setLastActivity();
 }
 
@@ -11,15 +16,41 @@ Request::~Request()
 
 }
 
+time_t Request::ft_getLastActivity() const
+{
+    return _lastActivity;
+}
+
+void Request::ft_setLastActivity()
+{
+    const time_t timestamp = time(NULL);
+    _lastActivity = timestamp;
+}
+
+bool Request::ft_appendData(const std::string& data)
+{
+    if (_rawRequest.size() + data.size() > MAX_HEADER_SIZE)
+    {
+        std::cerr << "Request exceeded maximum allowed size (" << MAX_HEADER_SIZE << " bytes)." << std::endl;
+        return true;
+    }
+    _rawRequest += data;
+    return false;
+}
+
 bool Request::ft_isRequestComplete()
 {
     size_t headerEnd = _rawRequest.find("\r\n\r\n");
     if (headerEnd == std::string::npos)
         return false;
+    return ft_isBodyComplete(headerEnd);
+}
 
+bool Request::ft_isBodyComplete(size_t headerEnd)
+{
     if (_rawRequest.find("Transfer-Encoding: chunked") != std::string::npos)
     {
-        if(_rawRequest.rfind("\r\n0\r\n\r\n") == std::string::npos)
+        if (_rawRequest.rfind("\r\n0\r\n\r\n") == std::string::npos)
             return false;
         return true;
     }
@@ -34,7 +65,6 @@ bool Request::ft_isRequestComplete()
             long contentLength = std::strtol(_rawRequest.substr(start, end - start).c_str(), &endPtr, 10);
             if (*endPtr != '\0' || contentLength < 0)
                 return false;
-
             size_t bodyStart = headerEnd + 4;
             if (_rawRequest.size() < bodyStart + static_cast<size_t>(contentLength))
                 return false;
@@ -69,18 +99,8 @@ bool Request::ft_parseRequest()
             _headers[key] = value;
         }
     }
-    std::cout << "Method: " << ft_getMethod() << std::endl;
-    std::cout << "Path: " << ft_getPath() << std::endl;
-    std::cout << "HTTP Version: " << ft_getHttpVersion() << std::endl;
-    for (std::map<std::string, std::string>::const_iterator it = _headers.begin(); it != _headers.end(); ++it)
-    {
-        std::cout << it->first << ": " << it->second << std::endl;
-    }
-    std::cout << "Body: " << ft_getBody() << std::endl;
-
     if (_method == "GET" || _method == "DELETE")
         return true;
-
     std::map<std::string, std::string>::iterator te = _headers.find("Transfer-Encoding");
     if (te != _headers.end() && te->second == "chunked")
         return ft_parseChunkedBody();
@@ -102,64 +122,9 @@ bool Request::ft_parseRequest()
             return false;
         }
     }
-
     if (!_method.empty() && !_path.empty() && !_httpVersion.empty())
         return true;
     return false;
-}
-
-std::string Request::ft_getMethod() const
-{
-    return _method;
-}
-
-std::string Request::ft_getPath() const
-{
-    return _path;
-}
-
-std::string Request::ft_getHttpVersion() const
-{
-    return _httpVersion;
-}
-
-std::map<std::string, std::string> Request::ft_getHeaders() const
-{
-    return _headers;
-}
-
-std::string Request::ft_getBody() const
-{
-    return _body;
-}
-
-std::string Request::ft_getHeader(const std::string &key) const
-{
-    std::map<std::string, std::string>::const_iterator it = _headers.find(key);
-    if (it != _headers.end())
-        return it->second;
-    return "";
-}
-
-// void Request::ft_appendData(const std::string& data)
-// {
-//     _rawRequest += data;
-// }
-
-bool Request::ft_appendData(const std::string& data)
-{
-    if (_rawRequest.size() + data.size() > MAX_HEADER_SIZE)
-    {
-        std::cerr << "Request exceeded maximum allowed size (" << MAX_HEADER_SIZE << " bytes)." << std::endl;
-        return true;
-    }
-    _rawRequest += data;
-    return false;
-}
-
-std::string Request::ft_getRawRequest() const
-{
-    return _rawRequest;
 }
 
 bool Request::ft_parseChunkedBody()
@@ -184,18 +149,25 @@ bool Request::ft_parseChunkedBody()
     return true;
 }
 
-int Request::ft_getClientFd() const
+std::string Request::ft_getHttpVersion() const
 {
-    return _clientFd;
+    return _httpVersion;
 }
 
-void Request::ft_setLastActivity()
+std::string Request::ft_getHeader(const std::string &key) const
 {
-    const time_t timestamp = time(NULL);
-    _lastActivity = timestamp;
+    std::map<std::string, std::string>::const_iterator it = _headers.find(key);
+    if (it != _headers.end())
+        return it->second;
+    return "";
 }
 
-time_t Request::ft_getLastActivity() const
+std::string Request::ft_getMethod() const
 {
-    return _lastActivity;
+    return _method;
+}
+
+std::string Request::ft_getPath() const
+{
+    return _path;
 }

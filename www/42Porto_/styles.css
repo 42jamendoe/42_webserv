@@ -1,0 +1,45 @@
+body {
+    background-color: #32CD32; /* Fundo verde */
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+nav {
+    background-color: #228B22;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+}
+nav a {
+    color: #fff;
+    text-decoration: none;
+    margin: 0 15px;
+    padding: 5px 10px;
+    transition: background-color 0.3s;
+}
+nav a:hover {
+    background-color: #006400;
+    border-radius: 5px;
+}
+.content {
+    text-align: center;
+    padding: 20px;
+}
+.hidden {
+    display: none;
+}
+.file-input {
+    margin-top: 20px;
+}
+.button {
+    margin-top: 10px;
+    padding: 5px 10px;
+    background-color: #006400;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.button:hover {
+    background-color: #228B22;
+}

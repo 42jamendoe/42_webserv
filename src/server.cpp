@@ -130,8 +130,8 @@ const Location* Server::ft_findLocation(const std::string& path) const
         const std::string& locPath = loc.ft_getPath();
 
         std::string locPathNormalized = locPath;
-        if (!locPathNormalized.empty() && locPathNormalized[locPathNormalized.size() - 1] != '/')
-            locPathNormalized += "/";
+        if (!locPathNormalized.empty() && locPathNormalized != "/" && locPathNormalized[locPathNormalized.size() - 1] == '/')
+            locPathNormalized = locPathNormalized.substr(locPathNormalized.size() - 1);
         if (path.find(locPathNormalized) == 0)
         {
             const size_t matchLength = locPathNormalized.size();

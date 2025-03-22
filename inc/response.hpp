@@ -3,50 +3,41 @@
 
 #include "request.hpp"
 #include "server.hpp"
-#include "location.hpp"
+#include "cgi.hpp"
 #include "defs.hpp"
-// #include <iostream>
-// #include <fstream>
-// #include <map>
-// #include <sstream>
-// #include <sys/stat.h>
-// #include <unistd.h>
-
 
 class Response
 {
-    public:
-    Server _resServer;
+private:
+    int _clientFd;
     int _statusCode;
     std::string _statusLine;
-    std::map<std::string, std::string> _headers;
     std::string _body;
+    std::map<std::string, std::string> _headers;
     std::string _rawResponse;
     size_t _bytesSent;
-    bool _readyToSend;
-
-    Response();
-    ~Response();
-    // void ft_generateResponse(Request &request, const std::vector<Server> &servers);
-    void ft_setResServer(const Server& server);
-    void ft_setResponse(int code, const std::string &message, const std::string &contentType = "text/html");
-    void ft_setStatus(int code, const std::string &message);
-    void ft_setHeader(const std::string &key, const std::string &value);
-    void ft_handleGET(Request& request, const Server& server);
-    void ft_handlePOST(Request& request, const Server& server);
-    void ft_handleDELETE(Request& request, const Server& server);
-    void ft_generateErrorResponse(int code);
-    void ft_processResponse(Request& request, const std::vector<Server>& servers);
-    static const Server& ft_findServerForRequest(const std::vector<Server>& servers, const std::string& requestedHost, int requestedPort);
-    const Location* ft_findMatchingLocation(const Request& request, const Server& server);
-    std::string ft_generateAutoindex(const std::string& directoryPath, const std::string& requestPath);
-    std::string ft_getMimeType(const std::string& path);
-    void ft_generateRawResponse();
-    void ft_setRedirect(const std::string& newLocation);
-
 
 public:
+    Response();
+    Response(int fd);
+    ~Response();
+
+    void ft_setResponse(int code, const std::string &message, const std::string &contentType);
+    void ft_setStatus(int code, const std::string &message);
+    void ft_setHeader(const std::string &key, const std::string &value);
+    void ft_generateRawResponse();
+    void ft_processResponse(Request &request, Cgi &tmpCgiProcess, const std::vector<Server> &servers, std::unordered_set<pid_t>& pidSet);
+    static const Server& ft_findServerForRequest(const std::vector<Server>& servers, const std::string& requestedHost, int requestedPort);
+    void ft_handleGET(Request& request, const Server& server);
+    std::vector<std::string> ft_getDirectoryListing(const std::string& directoryPath);
+    void ft_setBody(const std::string& bodyContent);
+    std::string ft_getMimeType(const std::string& path);
+    void ft_handlePOST(Request& request, Cgi &tmpCgiProcess, const Server& server, std::unordered_set<pid_t>& pidSet);
+    void ft_setResServer(const Server& server);
+    void ft_handleDELETE(Request& request, const Server& server);
     std::string ft_getResponseChunk();
-    std::string toString();
+    void ft_addBytesSent(size_t bytes);
+    size_t ft_getBytesSent() const;
+    std::string ft_getRawResponse() const;
 };
 #endif
